@@ -106,6 +106,11 @@
   (query-res-match query-results card)
   (collection-names-match collections card))
 
+(defmethod assert-loaded-entity (type Collection)
+  [collection _]
+  (is (not= "Rasta's Personal Collection" (:name collection)))
+  collection)
+
 (defn- id->name [model id]
   (db/select-one-field :name model :id id))
 
@@ -229,6 +234,7 @@
                                            [Field         (Field category-pk-field-id)]
                                            [Collection    (Collection collection-id)]
                                            [Collection    (Collection collection-id-nested)]
+                                           [Collection    (Collection personal-collection-id)]
                                            [Metric        (Metric metric-id)]
                                            [Segment       (Segment segment-id)]
                                            [Dashboard     (Dashboard dashboard-id)]
@@ -252,14 +258,12 @@
             (doseq [[model entity] (:entities fingerprint)]
               (testing (format "%s \"%s\"" (type model) (:name entity))
                 (is (or (-> entity :name nil?)
+                        (if-let [loaded (db/select-one model :name (:name entity))]
+                          (assert-loaded-entity loaded fingerprint))
                         (and (-> entity :archived) ; archived card hasn't been dump-loaded
                              (= (:name entity) "My Arch Card"))
-                        (let [loaded (db/select-one model :name (:name entity))]
-                          (is (some? loaded) (format
-                                              "Failed to find loaded entity with type %s and name %s"
-                                              model
-                                              (:name entity)))
-                          (assert-loaded-entity loaded fingerprint)))
+                        ;; Rasta's Personal Collection was not loaded
+                        (= "Rasta's Personal Collection" (:name entity)))
                     (str " failed " (pr-str entity)))))
             fingerprint))))
     (finally
