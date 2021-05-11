@@ -200,7 +200,7 @@
       (delete-directory! dump-dir))
     (mt/test-drivers (mt/normal-drivers-with-feature :basic-aggregations :binning :expressions)
       (let [fingerprint (ts/with-world
-                          (dump dump-dir (:email (test-users/fetch-user :crowberto)))
+                          (dump dump-dir (:email (test-users/fetch-user :crowberto)) {:only-db-ids #{db-id}})
                           {:query-results (gather-orig-results [card-id
                                                                 card-arch-id
                                                                 card-id-root
@@ -263,4 +263,4 @@
                     (str " failed " (pr-str entity)))))
             fingerprint))))
     (finally
-      (delete-directory! dump-dir))))
+      #_(delete-directory! dump-dir))))
