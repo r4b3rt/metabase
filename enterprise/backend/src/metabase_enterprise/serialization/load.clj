@@ -21,6 +21,7 @@
             [metabase.models.field :refer [Field]]
             [metabase.models.field-values :refer [FieldValues]]
             [metabase.models.metric :refer [Metric]]
+            [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
             [metabase.models.pulse :refer [Pulse]]
             [metabase.models.pulse-card :refer [PulseCard]]
             [metabase.models.pulse-channel :refer [PulseChannel]]
@@ -469,13 +470,21 @@
     (catch Throwable e
       (log/warn e (trs "Could not find context for fully qualified card name {0}" fully-qualified-name)))))
 
+(defn- resolve-snippet
+  [fully-qualified-name]
+  (try
+    (-> (fully-qualified-name->context fully-qualified-name) :snippet)
+    (catch Throwable e
+      (log/debug e (trs "Could not find context for fully qualified snippet name {0}" fully-qualified-name)))))
+
 (defn- resolve-native
   [card]
   (let [ks                [:dataset_query :native :template-tags]
         template-tags     (get-in card ks)
         new-template-tags (reduce-kv
                            (fn [m k v]
-                             (let [new-v (update-existing-capture-missing v :card-id source-card)]
+                             (let [new-v (-> (update-existing-capture-missing v :card-id source-card)
+                                             (update-existing-capture-missing :snippet-id resolve-snippet))]
                                (pull-unresolved-names-up m [k] new-v)))
                            {}
                            template-tags)]
@@ -511,7 +520,9 @@
   "Make a dummy card for first pass insertion"
   [card]
   (-> card
-      (assoc :dataset_query {:type :native :native {:query "-- DUMMY QUERY FOR SERIALIZATION FIRST PASS INSERT"}})
+      (assoc :dataset_query {:type     :native
+                             :native   {:query "-- DUMMY QUERY FOR SERIALIZATION FIRST PASS INSERT"}
+                             :database (:database_id card)})
       (dissoc ::unresolved-names)))
 
 (defn load-cards
@@ -601,7 +612,8 @@
                          [(load (str path "/collections") context)
                           (load (str path "/cards") context)
                           (load (str path "/pulses") context)
-                          (load (str path "/dashboards") context)]))
+                          (load (str path "/dashboards") context)
+                          (load (str path "/snippets") context)]))
         load-ns-fns  (for [[coll-ns [coll-ns-path]] ns-paths]
                        (do (log/infof "Loading %s namespace for collection at path %s" coll-ns coll-ns-path)
                            (load-collections coll-ns-path (assoc context :collection-namespace coll-ns))))
@@ -614,6 +626,15 @@
 (defmethod load "collections"
   [path context]
   (load-collections path context))
+
+(defn- prepare-snippet [snippet]
+  (assoc snippet :creator_id @default-user))
+
+(defmethod load "snippets"
+  [path context]
+  (let [paths       (list-dirs path)
+        snippets    (map prepare-snippet (slurp-many paths))]
+    (maybe-upsert-many! context NativeQuerySnippet snippets)))
 
 (defn load-settings
   "Load a dump of settings."

@@ -6,8 +6,8 @@
             [metabase-enterprise.serialization.cmd :refer [dump load]]
             [metabase-enterprise.serialization.test-util :as ts]
             [metabase.models :refer [Card Collection Dashboard DashboardCard DashboardCardSeries Database Dependency
-                                     Dimension Field FieldValues Metric Pulse PulseCard PulseChannel Segment Table
-                                     User]]
+                                     Dimension Field FieldValues Metric NativeQuerySnippet Pulse PulseCard PulseChannel
+                                     Segment Table User]]
             [metabase.test.data.users :as test-users]
             [metabase.util :as u]
             [toucan.db :as db]
@@ -28,7 +28,8 @@
 (defn- world-snapshot
   []
   (into {} (for [model [Database Table Field Metric Segment Collection Dashboard DashboardCard Pulse
-                        Card DashboardCardSeries FieldValues Dimension Dependency PulseCard PulseChannel User]]
+                        Card DashboardCardSeries FieldValues Dimension Dependency PulseCard PulseChannel User
+                        NativeQuerySnippet]]
              [model (db/select-field :id model)])))
 
 (defmacro with-world-cleanup
@@ -110,6 +111,15 @@
   [collection _]
   (is (not= "Rasta's Personal Collection" (:name collection)))
   collection)
+
+(defmethod assert-loaded-entity (type NativeQuerySnippet)
+  [snippet {:keys [entities]}]
+  (when-let [orig-snippet (first (filter (every-pred #(= (type NativeQuerySnippet) (type %))
+                                                     #(= "Pricey Venues" (:name %))) (map last entities)))]
+    (is (some? orig-snippet))
+    (is (= (select-keys orig-snippet [:name :description :content])
+           (select-keys snippet [:name :description :content])))
+    snippet))
 
 (defn- id->name [model id]
   (db/select-one-field :name model :id id))
@@ -214,7 +224,8 @@
                                                                 card-id-native-query
                                                                 card-id-root-to-collection
                                                                 card-id-collection-to-root
-                                                                card-id-template-tags])
+                                                                card-id-template-tags
+                                                                card-id-with-native-snippet])
                            :collections   (gather-collections [card-id
                                                                card-arch-id
                                                                card-id-root
@@ -223,35 +234,38 @@
                                                                card-id-native-query
                                                                card-id-root-to-collection
                                                                card-id-collection-to-root
-                                                               card-id-template-tags])
-                           :entities      [[Database      (Database db-id)]
-                                           [Table         (Table table-id)]
-                                           [Field         (Field numeric-field-id)]
-                                           [Field         (Field name-field-id)]
-                                           [Field         (Field category-field-id)]
-                                           [Field         (Field latitude-field-id)]
-                                           [Field         (Field longitude-field-id)]
-                                           [Field         (Field category-pk-field-id)]
-                                           [Collection    (Collection collection-id)]
-                                           [Collection    (Collection collection-id-nested)]
-                                           [Collection    (Collection personal-collection-id)]
-                                           [Metric        (Metric metric-id)]
-                                           [Segment       (Segment segment-id)]
-                                           [Dashboard     (Dashboard dashboard-id)]
-                                           [Dashboard     (Dashboard root-dashboard-id)]
-                                           [Card          (Card card-id)]
-                                           [Card          (Card card-arch-id)]
-                                           [Card          (Card card-id-root)]
-                                           [Card          (Card card-id-nested)]
-                                           [Card          (Card card-id-nested-query)]
-                                           [Card          (Card card-id-native-query)]
-                                           [DashboardCard (DashboardCard dashcard-id)]
-                                           [DashboardCard (DashboardCard dashcard-with-click-actions)]
-                                           [Card          (Card card-id-root-to-collection)]
-                                           [Card          (Card card-id-collection-to-root)]
-                                           [Card          (Card card-id-template-tags)]
-                                           [Pulse         (Pulse pulse-id)]
-                                           [DashboardCard (DashboardCard dashcard-with-textbox-id)]]})]
+                                                               card-id-template-tags
+                                                               card-id-with-native-snippet])
+                           :entities      [[Database           (Database db-id)]
+                                           [Table              (Table table-id)]
+                                           [Field              (Field numeric-field-id)]
+                                           [Field              (Field name-field-id)]
+                                           [Field              (Field category-field-id)]
+                                           [Field              (Field latitude-field-id)]
+                                           [Field              (Field longitude-field-id)]
+                                           [Field              (Field category-pk-field-id)]
+                                           [Collection         (Collection collection-id)]
+                                           [Collection         (Collection collection-id-nested)]
+                                           [Collection         (Collection personal-collection-id)]
+                                           [Metric             (Metric metric-id)]
+                                           [Segment            (Segment segment-id)]
+                                           [Dashboard          (Dashboard dashboard-id)]
+                                           [Dashboard          (Dashboard root-dashboard-id)]
+                                           [Card               (Card card-id)]
+                                           [Card               (Card card-arch-id)]
+                                           [Card               (Card card-id-root)]
+                                           [Card               (Card card-id-nested)]
+                                           [Card               (Card card-id-nested-query)]
+                                           [Card               (Card card-id-native-query)]
+                                           [DashboardCard      (DashboardCard dashcard-id)]
+                                           [DashboardCard      (DashboardCard dashcard-with-click-actions)]
+                                           [Card               (Card card-id-root-to-collection)]
+                                           [Card               (Card card-id-collection-to-root)]
+                                           [Card               (Card card-id-template-tags)]
+                                           [Pulse              (Pulse pulse-id)]
+                                           [DashboardCard      (DashboardCard dashcard-with-textbox-id)]
+                                           [NativeQuerySnippet (NativeQuerySnippet snippet-id)]
+                                           [Card               (Card card-id-with-native-snippet)]]})]
         (with-world-cleanup
           (load dump-dir {:on-error :continue :mode :update})
           (mt/with-db (db/select-one Database :name ts/temp-db-name)

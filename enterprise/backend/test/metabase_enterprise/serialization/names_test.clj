@@ -2,7 +2,7 @@
   (:require [clojure.test :refer :all]
             [metabase-enterprise.serialization.names :as names]
             [metabase-enterprise.serialization.test-util :as ts]
-            [metabase.models :refer [Card Collection Dashboard Database Field Metric Segment Table]]
+            [metabase.models :refer [Card Collection Dashboard Database Field Metric NativeQuerySnippet Segment Table]]
             [metabase.util :as u]))
 
 (deftest safe-name-test
@@ -32,8 +32,10 @@
                     (Collection collection-id)
                     (Collection collection-id-nested)
                     (Dashboard dashboard-id)
-                    (Database db-id)]]
+                    (Database db-id)
+                    (NativeQuerySnippet snippet-id)]]
       (testing (class object)
-        (let [context (names/fully-qualified-name->context (names/fully-qualified-name object))]
+        (let [context (names/fully-qualified-name->context (names/fully-qualified-name object))
+              id-fn   (some-fn :snippet :field :metric :segment :card :dashboard :collection :table :database)]
           (is (= (u/the-id object)
-                 ((some-fn :field :metric :segment :card :dashboard :collection :table :database) context))))))))
+                 (id-fn context))))))))

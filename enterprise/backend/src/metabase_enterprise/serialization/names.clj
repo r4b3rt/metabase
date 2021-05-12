@@ -9,6 +9,7 @@
             [metabase.models.database :as database :refer [Database]]
             [metabase.models.field :refer [Field]]
             [metabase.models.metric :refer [Metric]]
+            [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
             [metabase.models.pulse :refer [Pulse]]
             [metabase.models.segment :refer [Segment]]
             [metabase.models.table :refer [Table]]
@@ -18,6 +19,8 @@
             [ring.util.codec :as codec]
             [schema.core :as s]
             [toucan.db :as db]))
+
+(def ^:private root-collection-path "/collections/root")
 
 (defn safe-name
   "Return entity name URL encoded except that spaces are retained."
@@ -78,20 +81,20 @@
                          (format "%s/"))
         ns-part (if-let [coll-ns (:namespace collection)]
                   (str "/:" (if (keyword? coll-ns) (name coll-ns) coll-ns) "/"))]
-    (str "/collections/root/collections/" ns-part parents (safe-name collection))))
+    (str root-collection-path "/collections/" ns-part parents (safe-name collection))))
 
 (defmethod fully-qualified-name* (type Dashboard)
   [dashboard]
   (format "%s/dashboards/%s"
           (or (some->> dashboard :collection_id (fully-qualified-name Collection))
-              "/collections/root")
+              root-collection-path)
           (safe-name dashboard)))
 
 (defmethod fully-qualified-name* (type Pulse)
   [pulse]
   (format "%s/pulses/%s"
           (or (some->> pulse :collection_id (fully-qualified-name Collection))
-              "/collections/root")
+              root-collection-path)
           (safe-name pulse)))
 
 (defmethod fully-qualified-name* (type Card)
@@ -100,12 +103,19 @@
           (or (some->> card
                        :collection_id
                        (fully-qualified-name Collection))
-              "/collections/root")
+              root-collection-path)
           (safe-name card)))
 
 (defmethod fully-qualified-name* (type User)
   [user]
   (str "/users/" (:email user)))
+
+(defmethod fully-qualified-name* (type NativeQuerySnippet)
+  [snippet]
+  (format "%s/snippets/%s"
+          (or (some->> snippet :collection_id (fully-qualified-name Collection))
+              root-collection-path)
+          (safe-name snippet)))
 
 (defmethod fully-qualified-name* nil
   [_]
@@ -123,7 +133,8 @@
    (s/optional-key :dashboard)  su/IntGreaterThanZero
    (s/optional-key :collection) (s/maybe su/IntGreaterThanZero) ; root collection
    (s/optional-key :pulse)      su/IntGreaterThanZero
-   (s/optional-key :user)       su/IntGreaterThanZero})
+   (s/optional-key :user)       su/IntGreaterThanZero
+   (s/optional-key :snippet)    su/IntGreaterThanZero})
 
 (defmulti ^:private path->context* (fn [_ model _]
                                      model))
@@ -208,6 +219,12 @@
   [context _ email]
   (assoc context :user (db/select-one-id User
                          :email email)))
+
+(defmethod path->context* "snippets"
+  [context _ snippet-name]
+  (assoc context :snippet (db/select-one-id NativeQuerySnippet
+                                            :collection_id (:collection context)
+                                            :name          snippet-name)))
 
 (def ^:private separator-pattern #"\/")
 

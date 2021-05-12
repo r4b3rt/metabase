@@ -1,7 +1,7 @@
 (ns metabase-enterprise.serialization.test-util
   (:require [metabase-enterprise.serialization.names :as names]
             [metabase.models :refer [Card Collection Dashboard DashboardCard DashboardCardSeries Database Field Metric
-                                     Pulse PulseCard Segment Table]]
+                                     NativeQuerySnippet Pulse PulseCard Segment Table]]
             [metabase.models.collection :as collection]
             [metabase.shared.models.visualization-settings :as mb.viz]
             [metabase.test :as mt]
@@ -224,7 +224,26 @@
                                                                           [[:field-id ~'category-field-id]]}
                                                            :filter [:>
                                                                     [:field-literal "num_per_type" :type/Integer]
-                                                                    4]}}}]]
+                                                                    4]}}}]
+                   NativeQuerySnippet [{~'snippet-id :id}
+                                       {:content     "price > 2"
+                                        :description "Predicate on venues table for price > 2"
+                                        :name        "Pricey Venues"}]
+                   Card               [{~'card-id-with-native-snippet :id}
+                                       {:query_type    :native
+                                        :name          "Card with Native Query Snippet"
+                                        :collection_id ~'collection-id
+                                        :dataset_query
+                                        {:type     :native
+                                         :database ~'db-id
+                                         :native {:query "SELECT * FROM venues WHERE {{snippet: Pricey Venues}}"
+                                                  :template-tags {"snippet: Pricey Venues"
+                                                                  {:id           "d34baf40-b35a-11eb-8529-0242ac130003"
+                                                                   :name         "Snippet: Pricey Venues"
+                                                                   :display-name "Snippet: Pricey Venues"
+                                                                   :type         "snippet"
+                                                                   :snippet-name "Pricey Venues"
+                                                                   :snippet-id   ~'snippet-id}}}}}]]
      ~@body))
 
 ;; Don't memoize as IDs change in each `with-world` context
