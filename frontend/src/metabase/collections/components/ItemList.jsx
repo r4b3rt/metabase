@@ -7,7 +7,6 @@ import { t } from "ttag";
 import { color } from "metabase/lib/colors";
 
 import CollectionEmptyState from "metabase/components/CollectionEmptyState";
-import VirtualizedList from "metabase/components/VirtualizedList";
 
 import CollectionSectionHeading from "metabase/collections/components/CollectionSectionHeading";
 import ItemTypeFilterBar, {
@@ -18,7 +17,6 @@ import NormalItem from "metabase/collections/components/NormalItem";
 import ItemDragSource from "metabase/containers/dnd/ItemDragSource";
 import PinDropTarget from "metabase/containers/dnd/PinDropTarget";
 
-const ROW_HEIGHT = 72;
 
 import { ANALYTICS_CONTEXT } from "metabase/collections/constants";
 
@@ -32,35 +30,12 @@ export default function ItemList({
   showFilters,
   onMove,
   onCopy,
-  scrollElement,
+  onFilterChange,
+  filter
 }) {
   const everythingName =
     collectionHasPins && items.length > 0 ? t`Everything else` : t`Everything`;
   const filters = assocIn(ITEM_TYPE_FILTERS, [0, "name"], everythingName);
-
-  const renderListItem = React.useCallback(
-    ({ item, index }) => (
-      <Box className="relative">
-        <ItemDragSource
-          item={item}
-          selection={selection}
-          collection={collection}
-        >
-          <NormalItem
-            key={`${item.model}:${item.id}`}
-            item={item}
-            onPin={() => item.setPinned(true)}
-            collection={collection}
-            selection={selection}
-            onToggleSelected={onToggleSelected}
-            onMove={onMove}
-            onCopy={onCopy}
-          />
-        </ItemDragSource>
-      </Box>
-    ),
-    [collection, onCopy, onMove, onToggleSelected, selection],
-  );
 
   return (
     <Box className="relative">
@@ -68,6 +43,8 @@ export default function ItemList({
         <ItemTypeFilterBar
           analyticsContext={ANALYTICS_CONTEXT}
           filters={filters}
+          filter={filter}
+          onFilterChange={onFilterChange}
         />
       ) : (
         collectionHasPins &&
@@ -77,18 +54,27 @@ export default function ItemList({
       )}
       {items.length > 0 && (
         <PinDropTarget pinIndex={null} margin={8}>
-          <Box
-            style={{
-              position: "relative",
-              height: ROW_HEIGHT * items.length,
-            }}
-          >
-            <VirtualizedList
-              items={items}
-              rowHeight={ROW_HEIGHT}
-              renderItem={renderListItem}
-              scrollElement={scrollElement}
-            />
+          <Box>
+            {items.map(item => (
+              <Box key={`${item.id}_${item.model}`} className="relative">
+                <ItemDragSource
+                  item={item}
+                  selection={selection}
+                  collection={collection}
+                >
+                  <NormalItem
+                    key={`${item.model}:${item.id}`}
+                    item={item}
+                    onPin={() => item.setPinned(true)}
+                    collection={collection}
+                    selection={selection}
+                    onToggleSelected={onToggleSelected}
+                    onMove={onMove}
+                    onCopy={onCopy}
+                  />
+                </ItemDragSource>
+              </Box>
+            ))}
           </Box>
         </PinDropTarget>
       )}
