@@ -1,38 +1,64 @@
 import {
+  bookmark,
   browseDatabase,
   collection,
   dashboard,
-  question,
-  extractQueryParams,
-  extractEntityId,
   extractCollectionId,
+  extractEntityId,
+  extractQueryParams,
   isCollectionPath,
+  model,
+  modelDetail,
+  modelEditor,
+  question,
 } from "metabase/lib/urls";
 
 describe("urls", () => {
   describe("question", () => {
     describe("with a query", () => {
       it("returns the correct url", () => {
-        expect(question({}, "", { foo: "bar" })).toEqual("/question?foo=bar");
-        expect(question({}, "hash", { foo: "bar" })).toEqual(
+        expect(question({}, { query: { foo: "bar" } })).toEqual(
+          "/question?foo=bar",
+        );
+        expect(question({}, { hash: "hash", query: { foo: "bar" } })).toEqual(
           "/question?foo=bar#hash",
         );
-        expect(question(null, "hash", { foo: "bar" })).toEqual(
+        expect(question(null, { hash: "hash", query: { foo: "bar" } })).toEqual(
           "/question?foo=bar#hash",
         );
-        expect(question(null, "", { foo: "bar" })).toEqual("/question?foo=bar");
-        expect(question(null, "", { foo: "bar+bar" })).toEqual(
+        expect(question(null, { query: { foo: "bar" } })).toEqual(
+          "/question?foo=bar",
+        );
+        expect(question(null, { query: { foo: "bar+bar" } })).toEqual(
           "/question?foo=bar%2Bbar",
         );
-        expect(question(null, "", { foo: ["bar", "baz"] })).toEqual(
+        expect(question(null, { query: { foo: ["bar", "baz"] } })).toEqual(
           "/question?foo=bar&foo=baz",
         );
-        expect(question(null, "", { foo: ["bar", "baz+bay"] })).toEqual(
+        expect(question(null, { query: { foo: ["bar", "baz+bay"] } })).toEqual(
           "/question?foo=bar&foo=baz%2Bbay",
         );
-        expect(question(null, "", { foo: ["bar", "baz&bay"] })).toEqual(
+        expect(question(null, { query: { foo: ["bar", "baz&bay"] } })).toEqual(
           "/question?foo=bar&foo=baz%26bay",
         );
+      });
+
+      it("includes undefined params", () => {
+        expect(question(null, { query: { foo: undefined } })).toEqual(
+          "/question?foo=",
+        );
+        expect(
+          question(null, { query: { foo: undefined, bar: "bar" } }),
+        ).toEqual("/question?foo=&bar=bar");
+      });
+
+      it("includes null params", () => {
+        expect(question(null, { query: { foo: null } })).toEqual(
+          "/question?foo=",
+        );
+        expect(
+          question(null, { query: { foo: undefined, bar: "bar" } }),
+        ).toEqual("/question?foo=&bar=bar");
       });
     });
 
@@ -66,6 +92,31 @@ describe("urls", () => {
         );
       });
     });
+
+    describe("with object ID", () => {
+      it("should append object ID to path", () => {
+        const url = question({ id: 1 }, { objectId: 5 });
+        expect(url).toBe("/question/1/5");
+      });
+
+      it("should support query params", () => {
+        const url = question({ id: 1 }, { query: "?a=b", objectId: 5 });
+        expect(url).toBe("/question/1/5?a=b");
+      });
+
+      it("should support hash", () => {
+        const url = question({ id: 1 }, { hash: "abc", objectId: 5 });
+        expect(url).toBe("/question/1/5#abc");
+      });
+
+      it("should support both hash and query params", () => {
+        const url = question(
+          { id: 1, name: "foo" },
+          { hash: "abc", query: "a=b", objectId: 5 },
+        );
+        expect(url).toBe("/question/1-foo/5?a=b#abc");
+      });
+    });
   });
 
   describe("query", () => {
@@ -81,6 +132,7 @@ describe("urls", () => {
         }),
       ).toHaveLength(7);
     });
+
     it("should return correct parameters", () => {
       expect(extractQueryParams({ foo: "bar" })).toEqual([["foo", "bar"]]);
 
@@ -92,6 +144,66 @@ describe("urls", () => {
       const extractedParams2 = extractQueryParams({ foo: ["1", "2"] });
       expect(extractedParams2).toContainEqual(["foo", "1"]);
       expect(extractedParams2).toContainEqual(["foo", "2"]);
+    });
+  });
+
+  describe("model", () => {
+    it("should return correct URL", () => {
+      expect(model({ id: 1, type: "model", name: "Foo" })).toBe("/model/1-foo");
+    });
+
+    it("should prefer card_id when building a URL", () => {
+      expect(model({ id: 1, card_id: 42, type: "model", name: "Foo" })).toBe(
+        "/model/42-foo",
+      );
+    });
+
+    it("should work with `model: dataset` property", () => {
+      expect(model({ id: 1, card_id: 42, model: "dataset", name: "Foo" })).toBe(
+        "/model/42-foo",
+      );
+    });
+
+    it("should handle object ID", () => {
+      expect(
+        model({ id: 1, type: "model", name: "Foo" }, { objectId: 4 }),
+      ).toBe("/model/1-foo/4");
+    });
+
+    describe("detail page", () => {
+      it("should return correct URL", () => {
+        expect(modelDetail({ id: 1, type: "model", name: "Foo" })).toBe(
+          "/model/1-foo/detail",
+        );
+      });
+    });
+
+    describe("editor", () => {
+      it("should return correct query editor URL", () => {
+        expect(modelEditor({ id: 1, name: "Order" }, { type: "query" })).toBe(
+          "/model/1-order/query",
+        );
+      });
+
+      it("should return query editor URL if `type` isn't provided explicitly", () => {
+        expect(modelEditor({ id: 1, name: "Order" })).toBe(
+          "/model/1-order/query",
+        );
+      });
+
+      it("should return correct metadata editor URL", () => {
+        expect(
+          modelEditor({ id: 1, name: "Order" }, { type: "metadata" }),
+        ).toBe("/model/1-order/metadata");
+      });
+
+      it("should handle missing name", () => {
+        expect(modelEditor({ id: 1 })).toBe("/model/1/query");
+      });
+
+      it("should prefer card_id over id", () => {
+        expect(modelEditor({ id: 1, card_id: 2 })).toBe("/model/2/query");
+      });
     });
   });
 
@@ -155,6 +267,51 @@ describe("urls", () => {
     });
   });
 
+  describe("bookmarks", () => {
+    it("returns card bookmark path", () => {
+      expect(
+        bookmark({
+          id: "card-5",
+          card_type: "question",
+          name: "Orders",
+          type: "card",
+        }),
+      ).toBe("/question/5-orders");
+    });
+
+    it("returns model bookmark path", () => {
+      expect(
+        bookmark({
+          id: "card-1",
+          card_type: "model",
+          name: "Product",
+          type: "card",
+        }),
+      ).toBe("/model/1-product");
+    });
+
+    it("returns dashboard bookmark path", () => {
+      expect(
+        bookmark({
+          id: "dashboard-3",
+          name: "Shop Stats",
+          type: "dashboard",
+        }),
+      ).toBe("/dashboard/3-shop-stats");
+    });
+
+    it("returns collection bookmark path", () => {
+      expect(
+        bookmark({
+          id: "collection-8",
+          item_id: 8,
+          name: "Growth",
+          type: "collection",
+        }),
+      ).toBe("/collection/8-growth");
+    });
+  });
+
   describe("extractEntityId", () => {
     const testCases = [
       { slug: "33", id: 33 },
@@ -208,8 +365,8 @@ describe("urls", () => {
       { path: "dashboard/1", expected: false },
       { path: "/dashboard/1", expected: false },
       { path: "/dashboard/12-orders", expected: false },
-      { path: "/browse/1", expected: false },
-      { path: "/browse/12-shop", expected: false },
+      { path: "/browse/databases/1", expected: false },
+      { path: "/browse/databases/12-shop", expected: false },
       { path: "/question/1-orders", expected: false },
     ];
 
@@ -302,7 +459,7 @@ describe("urls", () => {
 
       it(`should handle ${caseName} correctly for database browse URLs`, () => {
         expect(browseDatabase(entity)).toBe(
-          expectedUrl("/browse/1", expectedString),
+          expectedUrl("/browse/databases/1", expectedString),
         );
       });
 

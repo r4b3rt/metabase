@@ -1,6 +1,4 @@
-import type { DatasetData, Column } from "metabase-types/types/Dataset";
-import type { ClickObject } from "metabase-types/types/Visualization";
-import { isNumber, isCoordinate } from "metabase/lib/schema_metadata";
+import { isCoordinate, isNumber } from "metabase-lib/v1/types/utils/isa";
 
 export function getTableClickedObjectRowData(
   [series],
@@ -44,7 +42,8 @@ export function getTableCellClickedObject(
   if (isPivoted) {
     // if it's a pivot table, the first column is
     if (columnIndex === 0) {
-      return row._dimension;
+      const { value, column: col } = row._dimension;
+      return { value, column: col, settings, data: [{ value, col }] };
     } else {
       return {
         value,
@@ -66,6 +65,9 @@ export function getTableCellClickedObject(
       data: clickedRowData,
     };
   } else {
+    // Clicks on aggregation columns can wind up here if the query has stages after the aggregation / breakout
+    // stage. In that case, column.source will be something like "fields", and it's up to Lib.availableDrillThrus
+    // to check the underlying column and construct the dimensions from the passed in clickedRowData.
     return {
       value,
       column,
@@ -76,11 +78,7 @@ export function getTableCellClickedObject(
   }
 }
 
-export function getTableHeaderClickedObject(
-  data: DatasetData,
-  columnIndex: number,
-  isPivoted: boolean,
-): ?ClickObject {
+export function getTableHeaderClickedObject(data, columnIndex, isPivoted) {
   const column = data.cols[columnIndex];
   if (isPivoted) {
     // if it's a pivot table, the first column is
@@ -90,7 +88,9 @@ export function getTableHeaderClickedObject(
       return null; // FIXME?
     }
   } else {
-    return { column };
+    return {
+      column,
+    };
   }
 }
 
@@ -98,7 +98,7 @@ export function getTableHeaderClickedObject(
  * Returns whether the column should be right-aligned in a table.
  * Includes numbers and lat/lon coordinates, but not zip codes, IDs, etc.
  */
-export function isColumnRightAligned(column: Column) {
+export function isColumnRightAligned(column) {
   // handle remapped columns
   if (column && column.remapped_to_column) {
     column = column.remapped_to_column;

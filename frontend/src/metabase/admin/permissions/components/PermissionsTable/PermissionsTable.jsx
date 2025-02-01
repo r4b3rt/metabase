@@ -1,31 +1,39 @@
-import React, { useState, useRef } from "react";
+import cx from "classnames";
 import PropTypes from "prop-types";
+import { useRef, useState } from "react";
 
-import Label from "metabase/components/type/Label";
-import Tooltip from "metabase/components/Tooltip";
-import Modal from "metabase/components/Modal";
 import ConfirmContent from "metabase/components/ConfirmContent";
+import Modal from "metabase/components/Modal";
+import { Ellipsified } from "metabase/core/components/Ellipsified";
+import Tooltip from "metabase/core/components/Tooltip";
+import CS from "metabase/css/core/index.css";
 
 import { PermissionsSelect } from "../PermissionsSelect";
+
 import {
+  ColumnName,
+  EntityName,
+  EntityNameLink,
+  HintIcon,
+  PermissionTableHeaderCell,
+  PermissionsTableCell,
   PermissionsTableRoot,
   PermissionsTableRow,
-  PermissionsTableCell,
-  EntityNameCell,
-  EntityNameLink,
-  EntityName,
-  HintIcon,
 } from "./PermissionsTable.styled";
 
 const propTypes = {
   entities: PropTypes.arrayOf(PropTypes.object),
-  columns: PropTypes.arrayOf(PropTypes.string),
+  columns: PropTypes.arrayOf(
+    PropTypes.shape({
+      name: PropTypes.string.isRequired,
+      hint: PropTypes.string,
+    }),
+  ),
   emptyState: PropTypes.node,
   onSelect: PropTypes.func,
   onChange: PropTypes.func,
   onAction: PropTypes.func,
   colorScheme: PropTypes.oneOf(["default", "admin"]),
-  horizontalPadding: PropTypes.oneOf(["sm", "lg"]),
 };
 
 export function PermissionsTable({
@@ -34,7 +42,6 @@ export function PermissionsTable({
   onSelect,
   onAction,
   onChange,
-  horizontalPadding = "sm",
   colorScheme,
   emptyState = null,
 }) {
@@ -72,50 +79,54 @@ export function PermissionsTable({
   const hasItems = entities.length > 0;
 
   return (
-    <React.Fragment>
+    <>
       <PermissionsTableRoot data-testid="permission-table">
         <thead>
           <tr>
-            {columns.map(column => {
+            {columns.map(({ name, hint }) => {
               return (
-                <PermissionsTableCell
-                  key={column}
-                  horizontalPadding={horizontalPadding}
-                >
-                  <Label>{column}</Label>
-                </PermissionsTableCell>
+                <PermissionTableHeaderCell key={name}>
+                  <ColumnName>
+                    {name}{" "}
+                    {hint && (
+                      <Tooltip placement="right" tooltip={hint}>
+                        <HintIcon />
+                      </Tooltip>
+                    )}
+                  </ColumnName>
+                </PermissionTableHeaderCell>
               );
             })}
-            <PermissionsTableCell
-              style={{ width: "100%", minWidth: "unset" }}
-            />
           </tr>
         </thead>
         <tbody>
           {entities.map(entity => {
+            const entityName = (
+              <span className={cx(CS.flex, CS.alignCenter)}>
+                <Ellipsified>{entity.name}</Ellipsified>
+                {entity.hint && (
+                  <Tooltip tooltip={entity.hint}>
+                    <HintIcon />
+                  </Tooltip>
+                )}
+              </span>
+            );
             return (
               <PermissionsTableRow key={entity.id}>
-                <EntityNameCell horizontalPadding={horizontalPadding}>
+                <PermissionsTableCell>
                   {entity.canSelect ? (
                     <EntityNameLink onClick={() => onSelect(entity)}>
-                      {entity.name}
+                      {entityName}
                     </EntityNameLink>
                   ) : (
-                    <EntityName>{entity.name}</EntityName>
+                    <EntityName>{entityName}</EntityName>
                   )}
+                </PermissionsTableCell>
 
-                  {entity.hint && (
-                    <Tooltip tooltip={entity.hint}>
-                      <HintIcon />
-                    </Tooltip>
-                  )}
-                </EntityNameCell>
-
-                {entity.permissions.map(permission => {
+                {entity.permissions.map((permission, index) => {
                   return (
                     <PermissionsTableCell
-                      key={permission.name}
-                      horizontalPadding={horizontalPadding}
+                      key={permission.type ?? String(index)}
                     >
                       <PermissionsSelect
                         {...permission}
@@ -145,7 +156,7 @@ export function PermissionsTable({
           />
         </Modal>
       )}
-    </React.Fragment>
+    </>
   );
 }
 

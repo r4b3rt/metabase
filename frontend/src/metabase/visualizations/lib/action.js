@@ -1,47 +1,66 @@
-import { open } from "metabase/lib/dom";
-
+import { push } from "react-router-redux";
 import _ from "underscore";
 
-import type { ClickAction } from "metabase-types/types/Visualization";
-
-type PerformActionProps = {
-  dispatch: Function,
-  onChangeCardAndRun: Function,
-};
+import { setParameterValuesFromQueryParams } from "metabase/dashboard/actions";
+import { isEmbeddingSdk } from "metabase/env";
+import { open } from "metabase/lib/dom";
 
 export function performAction(
-  action: ClickAction,
-  { dispatch, onChangeCardAndRun }: PerformActionProps,
+  action,
+  { dispatch, onChangeCardAndRun, onUpdateQuestion },
 ) {
   let didPerform = false;
   if (action.action) {
     const reduxAction = action.action();
     if (reduxAction) {
       dispatch(reduxAction);
+
       didPerform = true;
     }
   }
   if (action.url) {
+    // (metabase#51099) disable url click behavior when in sdk
+    if (isEmbeddingSdk) {
+      return true;
+    }
+
     const url = action.url();
+    const ignoreSiteUrl = action.ignoreSiteUrl;
     if (url) {
-      open(url);
+      open(url, {
+        openInSameOrigin: location => {
+          dispatch(push(location));
+          dispatch(setParameterValuesFromQueryParams(location.query));
+        },
+        ignoreSiteUrl,
+      });
       didPerform = true;
     }
   }
   if (action.question) {
+    const { questionChangeBehavior = "changeCardAndRun" } = action;
+
     const question = action.question();
+    const extra = action?.extra?.() ?? {};
+
     if (question) {
-      onChangeCardAndRun({ nextCard: question.card() });
+      if (questionChangeBehavior === "changeCardAndRun") {
+        onChangeCardAndRun({
+          nextCard: question.card(),
+          ...extra,
+          objectId: extra.objectId,
+        });
+      } else if (questionChangeBehavior === "updateQuestion") {
+        onUpdateQuestion(question);
+      }
+
       didPerform = true;
     }
   }
   return didPerform;
 }
 
-export function performDefaultAction(
-  actions: ClickAction[],
-  props: PerformActionProps,
-) {
+export function performDefaultAction(actions, props) {
   if (!actions) {
     return false;
   }

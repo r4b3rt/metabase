@@ -1,65 +1,25 @@
-import _ from "underscore";
 import { t } from "ttag";
-
-import * as React from "react";
-
-import { getComputedSettings, getSettingsWidgets } from "../settings";
+import _ from "underscore";
 
 import chartSettingNestedSettings from "metabase/visualizations/components/settings/ChartSettingNestedSettings";
 
-import type {
-  SettingId,
-  SettingDef,
-  SettingDefs,
-  Settings,
-  WidgetDef,
-  ExtraProps,
-} from "metabase/visualizations/lib/settings";
-
-import type { Series } from "metabase-types/types/Visualization";
-
-export type NestedObject = any;
-export type NestedObjectKey = string;
-
-type NestedSettingDef = SettingDef & {
-  objectName: string,
-  getObjects: (series: Series, settings: Settings) => NestedObject[],
-  getObjectKey: (object: NestedObject) => string,
-  getSettingDefintionsForObject: (
-    series: Series,
-    object: NestedObject,
-  ) => SettingDefs,
-  getInheritedSettingsForObject?: (
-    object: NestedObject,
-  ) => { [key: string]: any },
-  component: React.ComponentClass,
-  id?: SettingId,
-};
-
-export type SettingsWidgetsForObjectGetter = (
-  series: Series,
-  object: NestedObject,
-  storedSettings: Settings,
-  onChangeSettings: (newSettings: Settings) => void,
-  extra: ExtraProps,
-) => WidgetDef[];
-
-export type NestedObjectKeyGetter = (object: NestedObject) => NestedObjectKey;
+import { getComputedSettings, getSettingsWidgets } from "../settings";
 
 export function nestedSettings(
-  id: SettingId,
+  id,
   {
     objectName = "object",
     getObjects,
     getObjectKey,
-    getSettingDefintionsForObject,
+    getObjectSettings,
+    getSettingDefinitionsForObject,
     getInheritedSettingsForObject = () => ({}),
     component,
     ...def
-  }: NestedSettingDef = {},
+  } = {},
 ) {
   function getComputedSettingsForObject(series, object, storedSettings, extra) {
-    const settingsDefs = getSettingDefintionsForObject(series, object);
+    const settingsDefs = getSettingDefinitionsForObject(series, object);
     const inheritedSettings = getInheritedSettingsForObject(object);
     const computedSettings = getComputedSettings(
       settingsDefs,
@@ -83,7 +43,7 @@ export function nestedSettings(
       allComputedSettings[key] = getComputedSettingsForObject(
         series,
         object,
-        allStoredSettings[key] || {},
+        getObjectSettings(allStoredSettings, object) ?? {},
         extra,
       );
     }
@@ -97,7 +57,7 @@ export function nestedSettings(
     onChangeSettings,
     extra,
   ) {
-    const settingsDefs = getSettingDefintionsForObject(series, object);
+    const settingsDefs = getSettingDefinitionsForObject(series, object);
     const computedSettings = getComputedSettingsForObject(
       series,
       object,
@@ -118,6 +78,7 @@ export function nestedSettings(
   // decorate with nested settings HOC
   const widget = chartSettingNestedSettings({
     getObjectKey,
+    getObjectSettings,
     getSettingsWidgetsForObject,
   })(component);
 
@@ -125,7 +86,7 @@ export function nestedSettings(
     [id]: {
       section: t`Display`,
       default: {},
-      getProps: (series: Series, settings: Settings) => {
+      getProps: (series, settings, onChange, extra) => {
         const objects = getObjects(series, settings);
         const allComputedSettings = getComputedSettingsForAllObjects(
           series,
@@ -139,19 +100,22 @@ export function nestedSettings(
           objects,
           allComputedSettings,
           extra: { series, settings },
+          ...def.getExtraProps?.(series, settings, onChange, extra),
+          ...extra,
         };
       },
       widget,
       ...def,
     },
     [objectName]: {
-      getDefault(series: Series, settings: Settings) {
+      getDefault(series, settings) {
         const cache = new Map();
-        return (object: NestedObject) => {
+        return object => {
           const key = getObjectKey(object);
           if (!cache.has(key)) {
             const inheritedSettings = getInheritedSettingsForObject(object);
-            const storedSettings = settings[id][key] || {};
+            const storedSettings =
+              getObjectSettings(settings[id], object) ?? {};
             cache.set(key, {
               ...getComputedSettingsForObject(
                 series,
