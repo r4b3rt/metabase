@@ -1,6 +1,10 @@
+import PropTypes from "prop-types";
 import { DropTarget } from "react-dnd";
 
+import { isItemPinned } from "metabase/collections/utils";
+
 import DropArea from "./DropArea";
+
 import { PinnableDragTypes } from ".";
 
 const PinDropTarget = DropTarget(
@@ -13,9 +17,16 @@ const PinDropTarget = DropTarget(
     },
     canDrop(props, monitor) {
       const { item } = monitor.getItem();
+      const { variant } = props;
       // NOTE: not necessary to check collection permission here since we
       // enforce it when beginning to drag and item within the same collection
-      return props.pinIndex !== item.collection_position;
+      if (variant === "pin") {
+        return !isItemPinned(item);
+      } else if (variant === "unpin") {
+        return isItemPinned(item);
+      }
+
+      return false;
     },
   },
   (connect, monitor) => ({
@@ -24,5 +35,9 @@ const PinDropTarget = DropTarget(
     connectDropTarget: connect.dropTarget(),
   }),
 )(DropArea);
+
+PinDropTarget.propTypes = {
+  variant: PropTypes.oneOf(["pin", "unpin"]).isRequired,
+};
 
 export default PinDropTarget;

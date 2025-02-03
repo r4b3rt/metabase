@@ -1,16 +1,16 @@
-import {
-  getComputedSettings,
-  getSettingsWidgets,
-  getPersistableDefaultSettings,
-} from "../settings";
-
-import { getVisualizationRaw } from "metabase/visualizations";
-import { normalizeFieldRef } from "metabase/lib/dataset";
+import { assocIn } from "icepick";
 import { t } from "ttag";
 
-import type { Settings, SettingDefs, WidgetDef } from "../settings";
-import type { Series } from "metabase-types/types/Visualization";
-import type { VisualizationSettings } from "metabase-types/types/Card";
+import { isVirtualDashCard } from "metabase/dashboard/utils";
+import { getVisualizationRaw } from "metabase/visualizations";
+import { trackCardSetToHideWhenNoResults } from "metabase/visualizations/lib/settings/analytics";
+import { normalize } from "metabase-lib/v1/queries/utils/normalize";
+
+import {
+  getComputedSettings,
+  getPersistableDefaultSettings,
+  getSettingsWidgets,
+} from "../settings";
 
 const COMMON_SETTINGS = {
   "card.title": {
@@ -28,14 +28,28 @@ const COMMON_SETTINGS = {
     dashboard: true,
     useRawSeries: true,
   },
+  "card.hide_empty": {
+    title: t`Hide this card if there are no results`,
+    widget: "toggle",
+    inline: true,
+    dashboard: true,
+    getHidden: ([{ card }]) => isVirtualDashCard(card),
+    onUpdate: (value, extra) => {
+      if (!value) {
+        return;
+      }
+
+      trackCardSetToHideWhenNoResults(extra.dashboardId);
+    },
+  },
   click_behavior: {},
 };
 
-function getSettingDefintionsForSeries(series: ?Series): SettingDefs {
+function getSettingDefintionsForSeries(series) {
   if (!series) {
     return {};
   }
-  const { visualization } = getVisualizationRaw(series);
+  const visualization = getVisualizationRaw(series);
   const definitions = {
     ...COMMON_SETTINGS,
     ...(visualization.settings || {}),
@@ -53,26 +67,28 @@ function normalizeColumnSettings(columnSettings) {
     // if the key is a reference, normalize the mbql syntax
     const newColumnKey =
       refOrName === "ref"
-        ? JSON.stringify(["ref", normalizeFieldRef(fieldRef)])
+        ? JSON.stringify(["ref", normalize(fieldRef)])
         : oldColumnKey;
     newColumnSettings[newColumnKey] = columnSettings[oldColumnKey];
   }
   return newColumnSettings;
 }
 
-export function getStoredSettingsForSeries(series: ?Series): Settings {
-  const storedSettings: VisualizationSettings =
+export function getStoredSettingsForSeries(series) {
+  let storedSettings =
     (series && series[0] && series[0].card.visualization_settings) || {};
   if (storedSettings.column_settings) {
     // normalize any settings stored under old style keys: [ref, [fk->, 1, 2]]
-    storedSettings.column_settings = normalizeColumnSettings(
-      storedSettings.column_settings,
+    storedSettings = assocIn(
+      storedSettings,
+      ["column_settings"],
+      normalizeColumnSettings(storedSettings.column_settings),
     );
   }
   return storedSettings;
 }
 
-export function getComputedSettingsForSeries(series: ?Series): Settings {
+export function getComputedSettingsForSeries(series) {
   if (!series) {
     return {};
   }
@@ -81,9 +97,7 @@ export function getComputedSettingsForSeries(series: ?Series): Settings {
   return getComputedSettings(settingsDefs, series, storedSettings);
 }
 
-export function getPersistableDefaultSettingsForSeries(
-  series: ?Series,
-): Settings {
+export function getPersistableDefaultSettingsForSeries(series) {
   // A complete set of settings (not only defaults) is loaded because
   // some persistable default settings need other settings as dependency for calculating the default value
   const settingsDefs = getSettingDefintionsForSeries(series);
@@ -92,19 +106,22 @@ export function getPersistableDefaultSettingsForSeries(
 }
 
 export function getSettingsWidgetsForSeries(
-  series: ?Series,
-  onChangeSettings: (settings: Settings) => void,
-  isDashboard: boolean = false,
-): WidgetDef[] {
+  series,
+  onChangeSettings,
+  isDashboard = false,
+  extra = {},
+) {
   const settingsDefs = getSettingDefintionsForSeries(series);
   const storedSettings = getStoredSettingsForSeries(series);
   const computedSettings = getComputedSettingsForSeries(series);
+
   return getSettingsWidgets(
     settingsDefs,
     storedSettings,
     computedSettings,
     series,
     onChangeSettings,
+    { isDashboard, ...extra },
   ).filter(
     widget =>
       widget.dashboard === undefined || widget.dashboard === isDashboard,

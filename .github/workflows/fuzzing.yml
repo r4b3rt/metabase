@@ -1,44 +1,46 @@
 name: Fuzzing
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - '**'
+      - 'master'
+      - 'release-**'
     paths:
-    - 'frontend/**'
-    - 'shared/**'
-    - 'enterprise/frontend/**'
-    - '**/package.json'
-    - '**/yarn.lock'
-    - '**/.eslintrc'
-    - '.github/workflows/**'
+      - 'frontend/src/metabase-lib/expressions/**'
   pull_request:
-    paths-ignore:
-    - 'docs/**'
+    paths:
+      - 'frontend/src/metabase-lib/expressions/**'
 
 jobs:
-
   fe-fuzz-tokenizer:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 7
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v2
-    - name: Prepare Node.js
-      uses: actions/setup-node@v1
+    - uses: actions/checkout@v4
+    - name: Prepare front-end environment
+      uses: ./.github/actions/prepare-frontend
+    - name: Prepare back-end environment
+      uses: ./.github/actions/prepare-backend
       with:
-        node-version: 14.x
-    - name: Get M2 cache
-      uses: actions/cache@v2
-      with:
-        path: ~/.m2
-        key: ${{ runner.os }}-cljs-${{ hashFiles('**/shadow-cljs.edn') }}
-    - name: Get yarn cache
-      uses: actions/cache@v2
-      with:
-        path: ~/.cache/yarn
-        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-    - run: yarn install --frozen-lockfile --prefer-offline
+        m2-cache-key: 'cljs'
     - run: yarn test-unit frontend/test/metabase/lib/expressions/fuzz.tokenizer.unit.spec.js
       env:
         MB_FUZZ: 1
       name: Run fuzz testing on the tokenizer
+
+  fe-fuzz-recursive-parser:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v4
+    - name: Prepare front-end environment
+      uses: ./.github/actions/prepare-frontend
+    - name: Prepare back-end environment
+      uses: ./.github/actions/prepare-backend
+      with:
+        m2-cache-key: 'cljs'
+    - run: yarn test-unit frontend/test/metabase/lib/expressions/fuzz.recursive-parser.unit.spec.js
+      env:
+        MB_FUZZ: 1
+      name: Run fuzz testing on the recursive parser

@@ -1,10 +1,5 @@
-import _ from "underscore";
-import * as Q_DEPRECATED from "metabase/lib/query";
-import Utils from "metabase/lib/utils";
-import * as Urls from "metabase/lib/urls";
-
-import { CardApi } from "metabase/services";
 import { b64hash_to_utf8, utf8_to_b64url } from "metabase/lib/encoding";
+import { equals } from "metabase/lib/utils";
 
 export function createCard(name = null) {
   return {
@@ -15,98 +10,36 @@ export function createCard(name = null) {
   };
 }
 
-// start a new card using the given query type and optional database and table selections
-export function startNewCard(type, databaseId, tableId) {
-  // create a brand new card to work from
-  const card = createCard();
-  card.dataset_query = Q_DEPRECATED.createQuery(type, databaseId, tableId);
-
-  return card;
+function getCleanCard(card) {
+  return {
+    name: card.name,
+    collectionId: card.collectionId,
+    description: card.description,
+    dataset_query: card.dataset_query,
+    display: card.display,
+    displayIsLocked: card.displayIsLocked,
+    parameters: card.parameters,
+    dashboardId: card.dashboardId,
+    dashcardId: card.dashcardId,
+    visualization_settings: card.visualization_settings,
+    original_card_id: card.original_card_id,
+    type: card.type,
+  };
 }
 
-// load a card either by ID or from a base64 serialization.  if both are present then they are merged, which the serialized version taking precedence
-// TODO: move to redux
-export async function loadCard(cardId) {
-  try {
-    return await CardApi.get({ cardId: cardId });
-  } catch (error) {
-    console.log("error loading card", error);
-    throw error;
-  }
-}
-
-// TODO Atte Keinänen 5/31/17 Deprecated, we should migrate existing references to this method to `question.isCardDirty`
-// predicate function that dermines if a given card is "dirty" compared to the last known version of the card
-export function isCardDirty(card, originalCard) {
-  // The rules:
-  //   - if it's new, then it's dirty when
-  //       1) there is a database/table chosen or
-  //       2) when there is any content on the native query
-  //   - if it's saved, then it's dirty when
-  //       1) the current card doesn't match the last saved version
-
-  if (!card) {
-    return false;
-  } else if (!card.id) {
-    if (card.dataset_query.query && card.dataset_query.query["source-table"]) {
-      return true;
-    } else if (
-      card.dataset_query.native &&
-      !_.isEmpty(card.dataset_query.native.query)
-    ) {
-      return true;
-    } else {
-      return false;
-    }
+export function isEqualCard(card1, card2) {
+  if (card1 && card2) {
+    return equals(getCleanCard(card1), getCleanCard(card2));
   } else {
-    const origCardSerialized = originalCard
-      ? serializeCardForUrl(originalCard)
-      : null;
-    const newCardSerialized = card
-      ? serializeCardForUrl(_.omit(card, "original_card_id"))
-      : null;
-    return newCardSerialized !== origCardSerialized;
+    return false;
   }
 }
 
 // TODO Atte Keinänen 5/31/17 Deprecated, we should move tests to Questions.spec.js
 export function serializeCardForUrl(card) {
-  const dataset_query = Utils.copy(card.dataset_query);
-  if (dataset_query.query) {
-    dataset_query.query = Q_DEPRECATED.cleanQuery(dataset_query.query);
-  }
-
-  const cardCopy = {
-    name: card.name,
-    description: card.description,
-    dataset_query: dataset_query,
-    display: card.display,
-    displayIsLocked: card.displayIsLocked,
-    parameters: card.parameters,
-    visualization_settings: card.visualization_settings,
-    original_card_id: card.original_card_id,
-  };
-
-  return utf8_to_b64url(JSON.stringify(cardCopy));
+  return utf8_to_b64url(JSON.stringify(getCleanCard(card)));
 }
 
 export function deserializeCardFromUrl(serialized) {
   return JSON.parse(b64hash_to_utf8(serialized));
-}
-
-export function urlForCardState(state, dirty) {
-  return Urls.question(
-    state.card,
-    state.serializedCard && dirty ? state.serializedCard : "",
-  );
-}
-
-export function cleanCopyCard(card) {
-  const cardCopy = {};
-  for (const name in card) {
-    if (name.charAt(0) !== "$") {
-      cardCopy[name] = card[name];
-    }
-  }
-  return cardCopy;
 }

@@ -1,10 +1,13 @@
 (ns metabase.plugins.dependencies
-  (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [environ.core :as env]
-            [metabase.plugins.classloader :as classloader]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [trs]]))
+  (:require
+   [clojure.string :as str]
+   [environ.core :as env]
+   [metabase.plugins.classloader :as classloader]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [trs]]
+   [metabase.util.log :as log]))
+
+(set! *warn-on-reflection* true)
 
 (def ^:private plugins-with-unsatisfied-deps
   (atom #{}))
@@ -22,9 +25,8 @@
 
 (defmethod dependency-satisfied? :default [_ {{plugin-name :name} :info} dep]
   (log/error
-   (u/format-color 'red
-       (trs "Plugin {0} declares a dependency that Metabase does not understand: {1}" plugin-name dep))
-   (trs "Refer to the plugin manifest reference for a complete list of valid plugin dependencies:")
+   (u/format-color :red "Plugin %s declares a dependency that Metabase does not understand: %s" plugin-name dep)
+   "Refer to the plugin manifest reference for a complete list of valid plugin dependencies:"
    "https://github.com/metabase/metabase/wiki/Metabase-Plugin-Manifest-Reference")
   false)
 
@@ -33,7 +35,6 @@
 (defn log-once
   "Log a message a single time, such as warning that a plugin cannot be initialized because of required dependencies.
   Subsequent calls with duplicate messages are automatically ignored."
-  {:style/indent 1}
   ([message]
    (log-once nil message))
 
@@ -45,12 +46,12 @@
 
 (defn- warn-about-required-dependencies [plugin-name message]
   (log-once plugin-name
-    (str (u/format-color 'red (trs "Metabase cannot initialize plugin {0} due to required dependencies." plugin-name))
-         " "
-         message)))
+            (str (u/format-color 'red (trs "Metabase cannot initialize plugin {0} due to required dependencies." plugin-name))
+                 " "
+                 message)))
 
 (defmethod dependency-satisfied? :class
-  [_ {{plugin-name :name} :info} {^String classname :class, message :message, :as dep}]
+  [_ {{plugin-name :name} :info} {^String classname :class, message :message, :as _dep}]
   (try
     (Class/forName classname false (classloader/the-classloader))
     (catch ClassNotFoundException _
@@ -58,12 +59,12 @@
       false)))
 
 (defmethod dependency-satisfied? :plugin
-  [initialized-plugin-names {{plugin-name :name} :info, :as info} {dep-plugin-name :plugin}]
+  [initialized-plugin-names {{plugin-name :name} :info} {dep-plugin-name :plugin}]
   (log-once plugin-name (trs "Plugin ''{0}'' depends on plugin ''{1}''" plugin-name dep-plugin-name))
   ((set initialized-plugin-names) dep-plugin-name))
 
 (defmethod dependency-satisfied? :env-var
-  [_ {{plugin-name :name} :info, :as info} {env-var-name :env-var}]
+  [_ {{plugin-name :name} :info} {env-var-name :env-var}]
   (if (str/blank? (env/env (keyword env-var-name)))
     (do
       (log-once plugin-name (trs "Plugin ''{0}'' depends on environment variable ''{1}'' being set to something"
@@ -77,7 +78,7 @@
   (let [dep-satisfied? (fn [dep]
                          (u/prog1 (dependency-satisfied? initialized-plugin-names info dep)
                            (log-once plugin-name
-                             (trs "{0} dependency {1} satisfied? {2}" plugin-name (dissoc dep :message) (boolean <>)))))]
+                                     (trs "{0} dependency {1} satisfied? {2}" plugin-name (dissoc dep :message) (boolean <>)))))]
     (every? dep-satisfied? dependencies)))
 
 (defn all-dependencies-satisfied?
@@ -92,9 +93,8 @@
    (do
      (swap! plugins-with-unsatisfied-deps conj info)
      (log-once (u/format-color 'yellow
-                   (trs "Plugins with unsatisfied deps: {0}" (mapv (comp :name :info) @plugins-with-unsatisfied-deps))))
+                               (trs "Plugins with unsatisfied deps: {0}" (mapv (comp :name :info) @plugins-with-unsatisfied-deps))))
      false)))
-
 
 (defn- remove-plugins-with-satisfied-deps [plugins initialized-plugin-names ready-for-init-atom]
   ;; since `remove-plugins-with-satisfied-deps` could theoretically be called multiple times we need to reset the atom

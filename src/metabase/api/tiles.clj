@@ -1,32 +1,36 @@
 (ns metabase.api.tiles
   "`/api/tiles` endpoints."
-  (:require [cheshire.core :as json]
-            [clojure.set :as set]
-            [compojure.core :refer [GET]]
-            [metabase.api.common :as api]
-            [metabase.mbql.normalize :as normalize]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.query-processor :as qp]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [tru]]
-            [metabase.util.schema :as su]
-            [schema.core :as s])
-  (:import java.awt.Color
-           java.awt.image.BufferedImage
-           [java.io ByteArrayInputStream ByteArrayOutputStream]
-           javax.imageio.ImageIO))
+  (:require
+   [clojure.set :as set]
+   [metabase.api.common :as api]
+   [metabase.api.macros :as api.macros]
+   [metabase.legacy-mbql.normalize :as mbql.normalize]
+   [metabase.legacy-mbql.util :as mbql.u]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor.util :as qp.util]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [tru]]
+   [metabase.util.json :as json]
+   [metabase.util.malli.schema :as ms])
+  (:import
+   (java.awt Color)
+   (java.awt.image BufferedImage)
+   (java.io ByteArrayOutputStream)
+   (javax.imageio ImageIO)))
+
+(set! *warn-on-reflection* true)
 
 ;;; --------------------------------------------------- CONSTANTS ----------------------------------------------------
 
 (def ^:private ^:const tile-size             256.0)
-(def ^:private ^:const pixel-origin          (float (/ tile-size 2)))
+(def ^:private ^:const pixel-origin          (double (/ tile-size 2)))
 (def ^:private ^:const pin-size              6)
-(def ^:private ^:const pixels-per-lon-degree (float (/ tile-size 360)))
-(def ^:private ^:const pixels-per-lon-radian (float (/ tile-size (* 2 Math/PI))))
+(def ^:private ^:const pixels-per-lon-degree (double (/ tile-size 360)))
+(def ^:private ^:const pixels-per-lon-radian (double (/ tile-size (* 2 Math/PI))))
+
 (def ^:private ^:const tile-coordinate-limit
   "Limit for number of pins to query for per tile."
   2000)
-
 
 ;;; ---------------------------------------------------- UTIL FNS ----------------------------------------------------
 
@@ -36,12 +40,11 @@
 (defn- radians->degrees ^double [^double radians]
   (/ radians (/ Math/PI 180.0)))
 
-
 ;;; --------------------------------------------------- QUERY FNS ----------------------------------------------------
 
 (defn- x+y+zoom->lat-lon
   "Get the latitude & longitude of the upper left corner of a given tile."
-  [^double x, ^double y, ^long zoom]
+  [^double x ^double y ^long zoom]
   (let [num-tiles   (bit-shift-left 1 zoom)
         corner-x    (/ (* x tile-size) num-tiles)
         corner-y    (/ (* y tile-size) num-tiles)
@@ -66,17 +69,16 @@
                        (bottom-right :lon)]]
     (update details :filter mbql.u/combine-filter-clauses inside-filter)))
 
-
 ;;; --------------------------------------------------- RENDERING ----------------------------------------------------
 
-(defn- ^BufferedImage create-tile [zoom points]
+(defn- create-tile ^BufferedImage [zoom points]
   (let [num-tiles (bit-shift-left 1 zoom)
         tile      (BufferedImage. tile-size tile-size (BufferedImage/TYPE_INT_ARGB))
         graphics  (.getGraphics tile)
         color-blue (new Color 76 157 230)
         color-white (Color/white)]
     (try
-      (doseq [[^double lat, ^double lon] points]
+      (doseq [[^double lat ^double lon] points]
         (let [sin-y      (-> (Math/sin (degrees->radians lat))
                              (Math/max -0.9999)                           ; bound sin-y between -0.9999 and 0.9999 (why ?))
                              (Math/min 0.9999))
@@ -84,9 +86,10 @@
                                 (* lon pixels-per-lon-degree))
                           :y (+ pixel-origin
                                 (* 0.5
-                                   (Math/log (/ (+ 1 sin-y)
+                                   (Math/log (/ (inc sin-y)
                                                 (- 1 sin-y)))
-                                   (* pixels-per-lon-radian -1.0)))}      ; huh?
+                                   pixels-per-lon-radian
+                                   -1.0))}         ; huh?
               map-pixel  {:x (int (Math/floor (* (point :x) num-tiles)))
                           :y (int (Math/floor (* (point :y) num-tiles)))}
               tile-pixel {:x (mod (map-pixel :x) tile-size)
@@ -109,7 +112,7 @@
         (throw (Exception. (tru "No appropriate image writer found!"))))
       (.flush output-stream)
       (.toByteArray output-stream)
-      (catch Throwable e
+      (catch Throwable _e
         (byte-array 0)) ; return empty byte array if we fail for some reason
       (finally
         (u/ignore-exceptions
@@ -124,7 +127,6 @@
        :type     :query
        :query    {:source-query native}})
     query))
-
 
 ;;; ---------------------------------------------------- ENDPOINT ----------------------------------------------------
 
@@ -143,7 +145,7 @@
   (let [id-or-name' (int-or-string id-or-name)]
     [:field id-or-name' (when (string? id-or-name') {:base-type :type/Float})]))
 
-(defn query->tiles-query
+(defn- query->tiles-query
   "Transform a card's query into a query finding coordinates in a particular region.
 
   - transform native queries into nested mbql queries from that native query
@@ -151,55 +153,60 @@
   - limit query results to `tile-coordinate-limit` number of results
   - only select lat and lon fields rather than entire query's fields"
   [query {:keys [zoom x y lat-field lon-field]}]
-  (let [lat-ref (field-ref lat-field)
-        lon-ref (field-ref lon-field)]
-    (-> query
-        native->source-query
-        (update :query query-with-inside-filter
-                lat-ref lon-ref
-                x y zoom)
-        (assoc-in [:query :fields] [lat-ref lon-ref])
-        (assoc-in [:query :limit] tile-coordinate-limit)
-        (assoc :async? false))))
+  (-> query
+      native->source-query
+      (update :query query-with-inside-filter
+              lat-field lon-field
+              x y zoom)
+      (assoc-in [:query :fields] [lat-field lon-field])
+      (assoc-in [:query :limit] tile-coordinate-limit)))
 
-;; TODO - this can be reworked to be `defendpoint-async` instead
+;; TODO - this can be reworked to be async instead
 ;;
 ;; TODO - this should reduce results from the QP in a streaming fashion instead of requiring them all to be in memory
 ;; at the same time
-(api/defendpoint GET "/:zoom/:x/:y/:lat-field/:lon-field"
+(api.macros/defendpoint :get "/:zoom/:x/:y/:lat-field/:lon-field"
   "This endpoints provides an image with the appropriate pins rendered given a MBQL `query` (passed as a GET query
   string param). We evaluate the query and find the set of lat/lon pairs which are relevant and then render the
   appropriate ones. It's expected that to render a full map view several calls will be made to this endpoint in
   parallel."
-  [zoom x y lat-field lon-field query]
-  {zoom        su/IntString
-   x           su/IntString
-   y           su/IntString
-   lat-field   s/Str
-   lon-field   s/Str
-   query       su/JSONString}
-  (let [zoom        (Integer/parseInt zoom)
-        x           (Integer/parseInt x)
-        y           (Integer/parseInt y)
+  [{:keys [zoom x y lat-field lon-field]} :- [:map
+                                              [:zoom      ms/Int]
+                                              [:x         ms/Int]
+                                              [:y         ms/Int]
+                                              [:lat-field :string]
+                                              [:lon-field :string]]
+   {:keys [query]} :- [:map
+                       [:query ms/JSONString]]]
+  (let [lat-field-ref (field-ref lat-field)
+        lon-field-ref (field-ref lon-field)
 
         query
-        (normalize/normalize (json/parse-string query keyword))
+        (mbql.normalize/normalize (json/decode+kw query))
 
         updated-query (query->tiles-query query {:zoom zoom :x x :y y
-                                                 :lat-field lat-field
-                                                 :lon-field lon-field})
+                                                 :lat-field lat-field-ref
+                                                 :lon-field lon-field-ref})
 
-        {:keys [status], {:keys [rows]} :data, :as result}
-        (qp/process-query-and-save-execution! updated-query
-                                              {:executed-by api/*current-user-id*
-                                               :context     :map-tiles})]
-    ;; manual ring response here.  we simply create an inputstream from the byte[] of our image
+        {:keys [status], {:keys [rows cols]} :data, :as result}
+        (qp/process-query
+         (qp/userland-query updated-query {:executed-by api/*current-user-id*
+                                           :context     :map-tiles}))
+
+        lat-key (qp.util/field-ref->key lat-field-ref)
+        lon-key (qp.util/field-ref->key lon-field-ref)
+        find-fn (fn [lat-or-lon-key]
+                  (first (keep-indexed
+                          (fn [idx col] (when (= (qp.util/field-ref->key (:field_ref col)) lat-or-lon-key) idx))
+                          cols)))
+        lat-idx (find-fn lat-key)
+        lon-idx (find-fn lon-key)
+        points  (for [row rows]
+                  [(nth row lat-idx) (nth row lon-idx)])]
     (if (= status :completed)
       {:status  200
        :headers {"Content-Type" "image/png"}
-       :body    (ByteArrayInputStream. (tile->byte-array (create-tile zoom rows)))}
+       :body    (tile->byte-array (create-tile zoom points))}
       (throw (ex-info (tru "Query failed")
                       ;; `result` might be a `core.async` channel or something we're not expecting
                       (assoc (when (map? result) result) :status-code 400))))))
-
-(api/define-routes)
