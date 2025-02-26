@@ -1,5 +1,3 @@
-import React from "react";
-
 interface PointerProps {
   width: number;
   height: number;
@@ -7,7 +5,11 @@ interface PointerProps {
 }
 
 export const Pointer = ({ width, height, fill }: PointerProps) => {
-  const points = [[-width / 2, 0], [width / 2, 0], [0, height]]
+  const points = [
+    [-width / 2, 0],
+    [width / 2, 0],
+    [0, height],
+  ]
     .map(point => point.join(","))
     .join(" ");
 

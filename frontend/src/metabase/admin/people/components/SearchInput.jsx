@@ -1,14 +1,16 @@
-import React from "react";
-import styled from "styled-components";
+// eslint-disable-next-line no-restricted-imports
+import styled from "@emotion/styled";
 
-import Icon from "metabase/components/Icon";
-import TextInput from "metabase/components/TextInput";
+import Input from "metabase/core/components/Input";
+import { Icon } from "metabase/ui";
 
-const SearchInput = styled(TextInput).attrs({
-  icon: <Icon name="search" size={16} />,
-  borderRadius: "sm",
-})`
+const SearchInput = styled(Input)`
   min-width: 286px;
 `;
+
+SearchInput.defaultProps = {
+  icon: <Icon name="search" size={16} />,
+  borderRadius: "sm",
+};
 
 export default SearchInput;

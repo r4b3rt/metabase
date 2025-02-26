@@ -1,35 +1,9 @@
-import React from "react";
+/* eslint-disable react/prop-types */
 import PropTypes from "prop-types";
+import { Component } from "react";
+
 import { defer } from "metabase/lib/promise";
-
-import type { Dataset } from "metabase-types/types/Dataset";
-import type { RawSeries } from "metabase-types/types/Visualization";
-
-import Question from "metabase-lib/lib/Question";
-
-export type ChildProps = {
-  loading: boolean,
-  error: ?any,
-  results: ?(Dataset[]),
-  result: ?Dataset,
-  rawSeries: ?RawSeries,
-  cancel: () => void,
-  reload: () => void,
-};
-
-type OnLoadCallback = (results: ?(Dataset[])) => void;
-
-type Props = {
-  question: ?Question,
-  children?: (props: ChildProps) => React.Element,
-  onLoad?: OnLoadCallback,
-};
-
-type State = {
-  results: ?(Dataset[]),
-  loading: boolean,
-  error: ?any,
-};
+import { runQuestionQuery } from "metabase/services";
 
 const propTypes = {
   question: PropTypes.object,
@@ -56,15 +30,12 @@ const propTypes = {
  * </QuestionResultLoader>
  *
  */
-export class QuestionResultLoader extends React.Component {
-  props: Props;
-  state: State = {
+export class QuestionResultLoader extends Component {
+  state = {
     results: null,
     loading: false,
     error: null,
   };
-
-  _cancelDeferred: ?() => void;
 
   UNSAFE_componentWillMount = () => {
     this._reload();
@@ -78,10 +49,9 @@ export class QuestionResultLoader extends React.Component {
     }
   }
 
-  /*
-   * load the result by calling question.apiGetResults
-   */
   async _loadResult(question, onLoad, keepPreviousWhileLoading) {
+    const { collectionPreview } = this.props;
+
     // we need to have a question for anything to happen
     if (question) {
       try {
@@ -95,9 +65,9 @@ export class QuestionResultLoader extends React.Component {
           error: null,
         }));
 
-        // call apiGetResults and pass our cancel to allow for cancelation
-        const results: Dataset[] = await question.apiGetResults({
+        const results = await runQuestionQuery(question, {
           cancelDeferred: this._cancelDeferred,
+          collectionPreview,
         });
 
         // setState with our result, remove our cancel since we've finished

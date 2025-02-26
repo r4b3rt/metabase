@@ -1,69 +1,59 @@
-import React from "react";
 import PropTypes from "prop-types";
-import { connect } from "react-redux";
+import { Fragment } from "react";
 
-import { getLatestModerationReview } from "metabase-enterprise/moderation/service";
+import { useEditItemVerificationMutation } from "metabase/api";
+import { connect } from "metabase/lib/redux";
 import { getIsModerator } from "metabase-enterprise/moderation/selectors";
-import {
-  verifyCard,
-  removeCardReview,
-} from "metabase-enterprise/moderation/actions";
+import { getLatestModerationReview } from "metabase-enterprise/moderation/service";
 
-import ModerationActions from "../ModerationActions/ModerationActions";
-import ModerationReviewBanner from "../ModerationReviewBanner/ModerationReviewBanner";
+import { ModerationReviewBanner } from "../ModerationReviewBanner/ModerationReviewBanner";
+
+import { VerifyButton as DefaultVerifyButton } from "./QuestionModerationSection.styled";
 
 const mapStateToProps = (state, props) => ({
   isModerator: getIsModerator(state, props),
 });
-const mapDispatchToProps = {
-  verifyCard,
-  removeCardReview,
-};
 
-export default connect(
-  mapStateToProps,
-  mapDispatchToProps,
-)(QuestionModerationSection);
+export default connect(mapStateToProps)(QuestionModerationSection);
+
+QuestionModerationSection.VerifyButton = DefaultVerifyButton;
 
 QuestionModerationSection.propTypes = {
   question: PropTypes.object.isRequired,
-  verifyCard: PropTypes.func.isRequired,
-  removeCardReview: PropTypes.func.isRequired,
   isModerator: PropTypes.bool.isRequired,
+  reviewBannerClassName: PropTypes.string,
+  VerifyButton: PropTypes.func,
 };
 
 function QuestionModerationSection({
   question,
-  verifyCard,
-  removeCardReview,
   isModerator,
+  reviewBannerClassName,
 }) {
+  const [editItemVerification] = useEditItemVerificationMutation();
+
   const latestModerationReview = getLatestModerationReview(
     question.getModerationReviews(),
   );
 
-  const onVerify = () => {
-    const id = question.id();
-    verifyCard(id);
-  };
-
   const onRemoveModerationReview = () => {
     const id = question.id();
-    removeCardReview(id);
+    editItemVerification({
+      status: null,
+      moderated_item_id: id,
+      moderated_item_type: "card",
+    });
   };
 
   return (
-    <React.Fragment>
-      <ModerationActions
-        moderationReview={latestModerationReview}
-        onVerify={isModerator && onVerify}
-      />
+    <Fragment>
       {latestModerationReview && (
         <ModerationReviewBanner
+          className={reviewBannerClassName}
           moderationReview={latestModerationReview}
-          onRemove={isModerator && onRemoveModerationReview}
+          onRemove={isModerator ? onRemoveModerationReview : undefined}
         />
       )}
-    </React.Fragment>
+    </Fragment>
   );
 }

@@ -1,27 +1,16 @@
 /* eslint-disable react/prop-types */
-import React from "react";
-
-import AccordionList from "metabase/components/AccordionList";
-import Icon from "metabase/components/Icon";
-
+import { Component } from "react";
 import _ from "underscore";
 
-import type {
-  ParameterMappingUIOption,
-  ParameterTarget,
-} from "metabase-types/types/Parameter";
+import AccordionList from "metabase/core/components/AccordionList";
+import CS from "metabase/css/core/index.css";
+import { Icon } from "metabase/ui";
 
-type Props = {
-  target: ?ParameterTarget,
-  onChange: (target: ?ParameterTarget) => void,
-  mappingOptions: ParameterMappingUIOption[],
-};
-
-export default class ParameterTargetList extends React.Component {
-  props: Props;
+export default class ParameterTargetList extends Component {
+  props;
 
   render() {
-    const { target, mappingOptions } = this.props;
+    const { mappingOptions, selectedMappingOption } = this.props;
 
     const mappingOptionSections = _.groupBy(mappingOptions, "sectionName");
 
@@ -34,11 +23,11 @@ export default class ParameterTargetList extends React.Component {
 
     return (
       <AccordionList
-        className="text-brand"
+        className={CS.textBrand}
         maxHeight={this.props.maxHeight || 600}
         sections={sections}
         onChange={item => this.props.onChange(item.target)}
-        itemIsSelected={item => _.isEqual(item.target, target)}
+        itemIsSelected={item => item === selectedMappingOption}
         renderItemIcon={item => (
           <Icon name={item.icon || "unknown"} size={18} />
         )}

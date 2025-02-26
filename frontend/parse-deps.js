@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
+/* eslint-disable import/no-commonjs, no-undef, no-console */
 const fs = require("fs");
-const path = require("path");
-
-const glob = require("glob");
-const minimatch = require("minimatch");
-const parser = require("@babel/parser");
-const traverse = require("@babel/traverse").default;
 const readline = require("readline");
 
-const PATTERN = "{enterprise/,}frontend/src/**/*.{js,jsx}";
+const babel = require("@babel/core");
+const glob = require("glob");
+const minimatch = require("minimatch");
+const path = require("path");
+
+const PATTERN = "{enterprise/,}frontend/src/**/*.{js,jsx,ts,tsx}";
 
 // after webpack.config.js
 const ALIAS = {
@@ -24,19 +24,19 @@ function files() {
 }
 
 function dependencies() {
-  const deps = files().map(fileName => {
-    const contents = fs.readFileSync(fileName, "utf-8");
-    const options = {
-      allowImportExportEverywhere: true,
-      allowReturnOutsideFunction: true,
-      decoratorsBeforeExport: true,
-      sourceType: "unambiguous",
-      plugins: ["jsx", "flow", "decorators-legacy", "exportDefaultFrom"],
-    };
+  const deps = files().map(filename => {
+    const contents = fs.readFileSync(filename, "utf-8");
+
     const importList = [];
     try {
-      const ast = parser.parse(contents, options);
-      traverse(ast, {
+      const file = babel.transformSync(contents, {
+        filename,
+        presets: ["@babel/preset-typescript"],
+        ast: true,
+        code: false,
+      });
+
+      babel.traverse(file.ast, {
         enter(path) {
           if (path.node.type === "ImportDeclaration") {
             importList.push(path.node.source.value);
@@ -53,11 +53,10 @@ function dependencies() {
         },
       });
     } catch (e) {
-      console.error(fileName, e.toString());
+      console.error(filename, e.toString());
       process.exit(-1);
-      n;
     }
-    const base = path.dirname(fileName) + path.sep;
+    const base = path.dirname(filename) + path.sep;
     const absoluteImportList = importList
       .map(name => {
         const absName = name[0] === "." ? path.normalize(base + name) : name;
@@ -67,31 +66,41 @@ function dependencies() {
         const realName = parts.join(path.sep);
         return realName;
       })
-      .map(name => {
-        if (fs.existsSync(name)) {
-          if (
-            fs.lstatSync(name).isDirectory() &&
-            fs.existsSync(name + "/index.js")
-          ) {
-            return name + "/index.js";
-          }
-          return name;
-        } else if (fs.existsSync(name + ".js")) {
-          return name + ".js";
-        } else if (fs.existsSync(name + ".jsx")) {
-          return name + ".jsx";
-        }
-        return name;
-      })
+      .map(getFilePathFromImportPath)
       .filter(name => minimatch(name, PATTERN));
 
-    return { source: fileName, dependencies: absoluteImportList.sort() };
+    return { source: filename, dependencies: absoluteImportList.sort() };
   });
   return deps;
 }
 
+function getFilePathFromImportPath(name) {
+  const scriptsExtensions = ["js", "ts"];
+  const scriptsExtensionsWithJsx = [...scriptsExtensions, "jsx", "tsx"];
+
+  for (const extension of scriptsExtensionsWithJsx) {
+    const path = `${name}.${extension}`;
+
+    if (fs.existsSync(path)) {
+      return path;
+    }
+  }
+
+  const isDirectory = fs.existsSync(name) && fs.lstatSync(name).isDirectory();
+
+  for (const extension of scriptsExtensions) {
+    const indexScriptPath = `${name}/index.${extension}`;
+
+    if (isDirectory && fs.existsSync(indexScriptPath)) {
+      return indexScriptPath;
+    }
+  }
+
+  return name;
+}
+
 function dependents() {
-  let dependents = {};
+  const dependents = {};
   dependencies().forEach(dep => {
     const { source, dependencies } = dep;
     dependencies.forEach(d => {
@@ -106,7 +115,7 @@ function dependents() {
 
 function getDependents(sources) {
   const allDependents = dependents();
-  let filteredDependents = [];
+  const filteredDependents = [];
 
   sources.forEach(name => {
     const list = allDependents[name];
@@ -122,7 +131,7 @@ function filterDependents() {
   const rl = readline.createInterface({ input: process.stdin });
 
   const start = async () => {
-    let sources = [];
+    const sources = [];
     for await (const line of rl) {
       const name = line.trim();
       if (name.length > 0) {
@@ -139,14 +148,14 @@ function filterAllDependents() {
   const rl = readline.createInterface({ input: process.stdin });
 
   const start = async () => {
-    let sources = [];
+    const sources = [];
     for await (const line of rl) {
       const name = line.trim();
       if (name.length > 0) {
         sources.push(name);
       }
     }
-    let filteredDependents = getDependents(sources);
+    const filteredDependents = getDependents(sources);
 
     const allDependents = dependents();
     for (let i = 0; i < filteredDependents.length; ++i) {
@@ -252,7 +261,7 @@ function main(args) {
   }
 }
 
-let args = process.argv;
+const args = process.argv;
 args.shift();
 args.shift();
 main(args);

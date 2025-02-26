@@ -1,39 +1,31 @@
-/* eslint "react/prop-types": "warn" */
-
-import React, { Component } from "react";
-import { t, jt } from "ttag";
+/* eslint-disable react/prop-types */
 import cx from "classnames";
+import { Component } from "react";
+import { jt, t } from "ttag";
+import _ from "underscore";
 
-import ErrorMessage from "metabase/components/ErrorMessage";
+import { ErrorMessage } from "metabase/components/ErrorMessage";
+import ButtonsS from "metabase/css/components/buttons.module.css";
+import CS from "metabase/css/core/index.css";
+import { CreateOrEditQuestionAlertModal } from "metabase/notifications/modals/CreateOrEditQuestionAlertModal/CreateOrEditQuestionAlertModal";
 import Visualization from "metabase/visualizations/components/Visualization";
-import { datasetContainsNoResults } from "metabase/lib/dataset";
-import { DatasetQuery } from "metabase-types/types/Card";
-import { CreateAlertModalContent } from "metabase/query_builder/components/AlertModals";
-import Modal from "metabase/components/Modal";
-import { ALERT_TYPE_ROWS } from "metabase-lib/lib/Alert";
-import StructuredQuery from "metabase-lib/lib/queries/StructuredQuery";
+import * as Lib from "metabase-lib";
+import { ALERT_TYPE_ROWS } from "metabase-lib/v1/Alert";
+import { datasetContainsNoResults } from "metabase-lib/v1/queries/utils/dataset";
 
-import type { Question } from "metabase-lib/lib/Question";
-
-type Props = {
-  className?: string,
-  question: Question,
-  isObjectDetail: boolean,
-  result: any,
-  results: any[],
-  isDirty: boolean,
-  lastRunDatasetQuery: DatasetQuery,
-  navigateToNewCardInsideQB: any => void,
-  rawSeries: any,
-
-  onOpenChartSettings: () => void,
-  onUpdateWarnings: () => void,
-  onUpdateVisualizationSettings: (settings: any) => void,
-  query?: StructuredQuery,
-};
+const ALLOWED_VISUALIZATION_PROPS = [
+  // Table
+  "isShowingDetailsOnlyColumns",
+  // Table Interactive
+  "hasMetadataPopovers",
+  "tableHeaderHeight",
+  "scrollToColumn",
+  "renderTableHeaderWrapper",
+  "mode",
+  "renderEmptyMessage",
+];
 
 export default class VisualizationResult extends Component {
-  props: Props;
   state = {
     showCreateAlertModal: false,
   };
@@ -46,24 +38,39 @@ export default class VisualizationResult extends Component {
     this.setState({ showCreateAlertModal: false });
   };
 
+  getObjectDetailData = series => {
+    return [
+      {
+        ...series[0],
+        card: { ...series[0].card, display: "object" },
+      },
+    ];
+  };
+
   render() {
     const {
       question,
       isDirty,
+      queryBuilderMode,
       navigateToNewCardInsideQB,
       result,
       rawSeries,
+      timelineEvents,
+      selectedTimelineEventIds,
+      onNavigateBack,
       className,
+      isRunning,
+      renderEmptyMessage,
     } = this.props;
     const { showCreateAlertModal } = this.state;
 
     const noResults = datasetContainsNoResults(result.data);
-    if (noResults) {
+    if (noResults && !isRunning && !renderEmptyMessage) {
       const supportsRowsPresentAlert = question.alertType() === ALERT_TYPE_ROWS;
 
       // successful query but there were 0 rows returned with the result
       return (
-        <div className={cx(className, "flex")}>
+        <div className={cx(className, CS.flex)}>
           <ErrorMessage
             type="noRows"
             title={t`No results!`}
@@ -73,15 +80,21 @@ export default class VisualizationResult extends Component {
                 {supportsRowsPresentAlert && !isDirty && (
                   <p>
                     {jt`You can also ${(
-                      <a className="link" onClick={this.showCreateAlertModal}>
+                      <a
+                        className={CS.link}
+                        key="link"
+                        onClick={this.showCreateAlertModal}
+                      >
                         {t`get an alert`}
                       </a>
                     )} when there are some results.`}
                   </p>
                 )}
                 <button
-                  className="Button"
-                  onClick={() => window.history.back()}
+                  className={ButtonsS.Button}
+                  onClick={() =>
+                    onNavigateBack ? onNavigateBack() : window.history.back()
+                  }
                 >
                   {t`Back to previous results`}
                 </button>
@@ -89,32 +102,57 @@ export default class VisualizationResult extends Component {
             }
           />
           {showCreateAlertModal && (
-            <Modal full onClose={this.onCloseCreateAlertModal}>
-              <CreateAlertModalContent
-                onCancel={this.onCloseCreateAlertModal}
-                onAlertCreated={this.onCloseCreateAlertModal}
-              />
-            </Modal>
+            <CreateOrEditQuestionAlertModal
+              opened
+              onClose={this.onCloseCreateAlertModal}
+              onAlertCreated={this.onCloseCreateAlertModal}
+            />
           )}
         </div>
       );
     } else {
+      const vizSpecificProps = _.pick(
+        this.props,
+        ...ALLOWED_VISUALIZATION_PROPS,
+      );
+      const { isEditable } = Lib.queryDisplayInfo(question.query());
+      const hasDrills = isEditable;
       return (
-        <Visualization
-          className={className}
-          rawSeries={rawSeries}
-          onChangeCardAndRun={navigateToNewCardInsideQB}
-          isEditing={true}
-          isQueryBuilder={true}
-          showTitle={false}
-          metadata={question.metadata()}
-          onOpenChartSettings={this.props.onOpenChartSettings}
-          onUpdateWarnings={this.props.onUpdateWarnings}
-          onUpdateVisualizationSettings={
-            this.props.onUpdateVisualizationSettings
-          }
-          query={this.props.query}
-        />
+        <>
+          <Visualization
+            className={className}
+            rawSeries={rawSeries}
+            onChangeCardAndRun={
+              hasDrills ? navigateToNewCardInsideQB : undefined
+            }
+            isEditing={true}
+            isObjectDetail={false}
+            isQueryBuilder={true}
+            queryBuilderMode={queryBuilderMode}
+            showTitle={false}
+            canToggleSeriesVisibility
+            metadata={question.metadata()}
+            timelineEvents={timelineEvents}
+            selectedTimelineEventIds={selectedTimelineEventIds}
+            handleVisualizationClick={this.props.handleVisualizationClick}
+            onOpenTimelines={this.props.onOpenTimelines}
+            onSelectTimelineEvents={this.props.selectTimelineEvents}
+            onDeselectTimelineEvents={this.props.deselectTimelineEvents}
+            onOpenChartSettings={this.props.onOpenChartSettings}
+            onUpdateQuestion={this.props.onUpdateQuestion}
+            onUpdateWarnings={this.props.onUpdateWarnings}
+            onUpdateVisualizationSettings={
+              this.props.onUpdateVisualizationSettings
+            }
+            {...vizSpecificProps}
+          />
+          {this.props.isObjectDetail && (
+            <Visualization
+              isObjectDetail={true}
+              rawSeries={this.getObjectDetailData(rawSeries)}
+            />
+          )}
+        </>
       );
     }
   }

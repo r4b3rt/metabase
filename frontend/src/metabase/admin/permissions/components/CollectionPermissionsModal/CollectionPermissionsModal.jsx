@@ -1,32 +1,31 @@
-import React, { useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
-import { connect } from "react-redux";
+import { useCallback, useEffect } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
+import { isPersonalCollectionChild } from "metabase/collections/utils";
+import ModalContent from "metabase/components/ModalContent";
+import Button from "metabase/core/components/Button";
+import Link from "metabase/core/components/Link";
+import CS from "metabase/css/core/index.css";
+import Collections from "metabase/entities/collections";
+import Groups from "metabase/entities/groups";
+import { connect } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 
-import Collections from "metabase/entities/collections";
-import SnippetCollections from "metabase/entities/snippet-collections";
-
-import { isPersonalCollectionChild } from "metabase/collections/utils";
-
-import ModalContent from "metabase/components/ModalContent";
-import Button from "metabase/components/Button";
-import Link from "metabase/components/Link";
-import Groups from "metabase/entities/groups";
-
-import { PermissionsTable } from "../PermissionsTable";
-import { permissionEditorPropTypes } from "../PermissionsEditor";
-import {
-  getIsDirty,
-  getCollectionsPermissionEditor,
-} from "../../selectors/collection-permissions";
 import {
   initializeCollectionPermissions,
-  updateCollectionPermission,
   saveCollectionPermissions,
+  updateCollectionPermission,
 } from "../../permissions";
+import {
+  collectionsQuery,
+  getCollectionEntity,
+  getCollectionsPermissionEditor,
+  getIsDirty,
+} from "../../selectors/collection-permissions";
+import { permissionEditorPropTypes } from "../PermissionsEditor";
+import { PermissionsTable } from "../PermissionsTable";
 
 import { PermissionTableContainer } from "./CollectionPermissionsModal.styled";
 
@@ -35,9 +34,6 @@ const getDefaultTitle = namespace =>
     ? t`Permissions for this folder`
     : t`Permissions for this collection`;
 
-const getCollectionEntity = props =>
-  props.namespace === "snippets" ? SnippetCollections : Collections;
-
 const mapStateToProps = (state, props) => {
   const collectionId = Urls.extractCollectionId(props.params.slug);
   return {
@@ -45,8 +41,9 @@ const mapStateToProps = (state, props) => {
       namespace: props.namespace,
       params: { collectionId },
     }),
-    collection: getCollectionEntity(props).selectors.getObject(state, {
-      entityId: collectionId,
+    collection: getCollectionEntity(state, {
+      params: { collectionId },
+      namespace: props.namespace,
     }),
     collectionsList: Collections.selectors.getList(state, {
       entityQuery: { tree: true },
@@ -126,14 +123,14 @@ const CollectionPermissionsModal = ({
     <ModalContent
       title={modalTitle}
       onClose={onClose}
-      className="overflow-hidden"
+      className={CS.overflowHidden}
       footer={[
         ...(namespace === "snippets"
           ? []
           : [
               <Link
                 key="all-permissions"
-                className="link"
+                className={CS.link}
                 to="/admin/permissions/collections"
               >
                 {t`See all collection permissions`}
@@ -161,11 +158,8 @@ CollectionPermissionsModal.propTypes = propTypes;
 
 export default _.compose(
   Collections.loadList({
-    query: () => ({ tree: true }),
+    entityQuery: collectionsQuery,
   }),
   Groups.loadList(),
-  connect(
-    mapStateToProps,
-    mapDispatchToProps,
-  ),
+  connect(mapStateToProps, mapDispatchToProps),
 )(CollectionPermissionsModal);
